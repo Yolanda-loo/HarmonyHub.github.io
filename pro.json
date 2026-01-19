@@ -1,0 +1,37 @@
+{
+  "project_id": "proj_8823_lofi_beat",
+  "meta": {
+    "tempo": 120,
+    "time_signature": [4, 4],
+    "key": "C Minor",
+    "master_volume": 0.8
+  },
+  "tracks": [
+    {
+      "id": "trk_01",
+      "name": "Drums - Kick",
+      "type": "audio",
+      "color": "#FF5733",
+      "plugins": [{"name": "EQ", "settings": {...}}],
+      "clips": [
+        {
+          "id": "clip_a1",
+          "start_time": 0.0,
+          "duration": 4.0,
+          "asset_url": "s3://bucket/kick_loop_01.wav",
+          "offset": 0
+        }
+      ]
+    },
+    {
+      "id": "trk_02",
+      "name": "Lead Synth",
+      "type": "midi",
+      "instrument": "synth_retro_01",
+      "midi_events": [
+        {"note": "C4", "start": 0.0, "duration": 0.5, "velocity": 80},
+        {"note": "E4", "start": 0.5, "duration": 0.5, "velocity": 90}
+      ]
+    }
+  ]
+}
