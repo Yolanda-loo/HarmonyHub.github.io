@@ -12,7 +12,7 @@
       "name": "Drums - Kick",
       "type": "audio",
       "color": "#FF5733",
-      "plugins": [{"name": "EQ", "settings": {...}}],
+      "plugins": [{"name": "EQ", "settings": {"frequency": 1000, "gain": -2.0}}],
       "clips": [
         {
           "id": "clip_a1",
