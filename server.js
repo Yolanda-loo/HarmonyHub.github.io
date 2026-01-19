@@ -2,7 +2,8 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const Y = require('yjs');
-const { setupWSConnection } = require('y-websocket/bin/utils');
+// We point directly to the file to bypass Node's export restriction
+const { setupWSConnection } = require('./node_modules/y-websocket/bin/utils.js');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 
