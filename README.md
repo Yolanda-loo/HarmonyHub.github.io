@@ -116,7 +116,3 @@ npm run dev
 ### **License**
 
 Distributed under the MIT License. See `LICENSE` for more information.
-
----
-
-**Next Step:** Now that your documentation is set, would you like to implement **Phase 3** and make those buttons actually play a sound?
