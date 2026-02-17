@@ -7,6 +7,7 @@ function App() {
   
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isRecording, setIsRecording] = useState(false); // NEW: Recording State
   const [currentStep, setCurrentStep] = useState(0);
   const [customSampleName, setCustomSampleName] = useState("No custom sample loaded");
 
@@ -15,6 +16,7 @@ function App() {
   const melodyRef = useRef(melody);
   const canvasRef = useRef(null);
   const analyserRef = useRef(null);
+  const recorderRef = useRef(null); // NEW: Recorder Reference
 
   useEffect(() => { gridRef.current = grid; }, [grid]);
   useEffect(() => { melodyRef.current = melody; }, [melody]);
@@ -23,16 +25,18 @@ function App() {
     await startAudio();
     
     // --- VISUALIZER SETUP ---
-    // Connect an FFT (Fast Fourier Transform) analyzer to the Master Output
     analyserRef.current = new Tone.Analyser("fft", 64);
     Tone.Destination.connect(analyserRef.current);
+
+    // --- RECORDER SETUP ---
+    recorderRef.current = new Tone.Recorder();
+    Tone.Destination.connect(recorderRef.current);
 
     synthsRef.current = {
       Kick: new Tone.MembraneSynth().toDestination(),
       Snare: new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0 } }).toDestination(),
       HiHat: new Tone.MetalSynth({ envelope: { attack: 0.001, decay: 0.1, release: 0.01 }, harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5 }).toDestination(),
       Synth: new Tone.PolySynth(Tone.Synth, { oscillator: { type: "triangle" } }).toDestination(),
-      // Placeholder for custom uploaded audio
       Custom: null 
     };
 
@@ -49,7 +53,7 @@ function App() {
       if (cGrid.Snare && cGrid.Snare[step]) synthsRef.current.Snare.triggerAttackRelease("8n", time);
       if (cGrid.HiHat && cGrid.HiHat[step]) synthsRef.current.HiHat.triggerAttackRelease("32n", time, 0.3);
       
-      // Play custom uploaded sample if it exists and is triggered
+      // Play custom sample
       if (cGrid.Custom && cGrid.Custom[step] && synthsRef.current.Custom) {
           synthsRef.current.Custom.start(time);
       }
@@ -62,7 +66,7 @@ function App() {
     }, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], "16n").start(0);
 
     setIsReady(true);
-    drawVisualizer(); // Start the glowing animation loop
+    drawVisualizer(); 
   };
 
   // --- THE GLOWING VISUALIZER ENGINE ---
@@ -74,24 +78,40 @@ function App() {
     const ctx = canvas.getContext('2d');
     const values = analyserRef.current.getValue();
     
-    // Create a trailing "motion blur" effect
     ctx.fillStyle = 'rgba(18, 18, 18, 0.2)'; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Draw the neon bars
     const barWidth = canvas.width / values.length;
     for (let i = 0; i < values.length; i++) {
-        // Map dB values (-100 to 0) to canvas height
         const val = Math.max(0, values[i] + 100); 
         const barHeight = (val * canvas.height) / 100;
         
-        // Neon Gradient
         const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-        gradient.addColorStop(0, '#ff00ff'); // Pink
-        gradient.addColorStop(1, '#00ffff'); // Cyan
+        gradient.addColorStop(0, '#ff00ff'); 
+        gradient.addColorStop(1, '#00ffff'); 
         
         ctx.fillStyle = gradient;
         ctx.fillRect(i * barWidth, canvas.height - barHeight, barWidth - 2, barHeight);
+    }
+  };
+
+  // --- AUDIO RECORDING HANDLER ---
+  const handleRecord = async () => {
+    if (!recorderRef.current) return;
+    
+    if (isRecording) {
+      // Stop recording and download
+      const recording = await recorderRef.current.stop();
+      const url = URL.createObjectURL(recording);
+      const anchor = document.createElement("a");
+      anchor.download = "HarmonyHub_Beat.webm"; 
+      anchor.href = url;
+      anchor.click();
+      setIsRecording(false);
+    } else {
+      // Start recording
+      recorderRef.current.start();
+      setIsRecording(true);
     }
   };
 
@@ -101,8 +121,6 @@ function App() {
       if (file) {
           const url = URL.createObjectURL(file);
           setCustomSampleName(file.name);
-          
-          // Load the user's file into a Tone.Player
           synthsRef.current.Custom = new Tone.Player(url).toDestination();
           alert(`${file.name} loaded successfully! Map it on the 'Custom' grid track.`);
       }
@@ -113,7 +131,6 @@ function App() {
     setIsPlaying(!isPlaying);
   };
 
-  // We add 'Custom' dynamically to the grid UI array
   const displayInstruments = [...INSTRUMENTS, 'Custom'];
 
   return (
@@ -147,12 +164,18 @@ function App() {
           {/* Controls & Upload */}
           <div style={{ marginBottom: '30px', display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={togglePlay} style={btnStyle(isPlaying ? '#ff3366' : '#00e676')}>{isPlaying ? '⏹ Pause' : '▶ Play'}</button>
+            
+            {/* RECORD BUTTON */}
+            <button onClick={handleRecord} style={btnStyle(isRecording ? '#ff0000' : '#444444')}>
+              {isRecording ? '🛑 Stop & Save' : '⏺ Record Audio'}
+            </button>
+
             <div style={{ padding: '15px', background: '#222', borderRadius: '8px' }}>Tempo: 120 BPM</div>
             
-            {/* Custom Audio Upload Button */}
+            {/* Custom Audio Upload */}
             <div style={{ padding: '10px 15px', background: '#333', borderRadius: '8px', border: '1px dashed #00FFFF', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <label style={{ cursor: 'pointer', color: '#00FFFF', fontWeight: 'bold' }}>
-                    📁 Upload Custom Sound (.wav/.mp3)
+                    📁 Upload Custom Sound
                     <input type="file" accept="audio/*" onChange={handleFileUpload} style={{ display: 'none' }} />
                 </label>
                 <span style={{ fontSize: '12px', color: '#aaa' }}>{customSampleName}</span>
@@ -195,7 +218,6 @@ function App() {
   );
 }
 
-// Helper Styles
 const btnStyle = (bg) => ({ padding: '15px 30px', fontSize: '16px', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer', background: bg, color: 'white', boxShadow: `0 0 15px ${bg}40` });
 const gridBtnStyle = (isActive, isCurrentStep, activeColor) => ({
     flex: 1, height: '40px', border: '1px solid #111', borderRadius: '4px', cursor: 'pointer',
