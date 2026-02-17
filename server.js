@@ -2,10 +2,11 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const Y = require('yjs');
-// We point directly to the file to bypass Node's export restriction
-const { setupWSConnection } = require('./node_modules/y-websocket/bin/utils.js');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+
+// WebSocket connection manager
+const docMap = new Map();
 
 // --- CONFIGURATION ---
 const app = express();
@@ -21,6 +22,16 @@ app.use(express.json());
 
 // Mock Database for Projects (In a real app, this is Postgres)
 const projectsDB = {};
+
+// Health check endpoint
+app.get('/api', (req, res) => {
+    res.json({ status: 'ok', message: 'HarmonyHub Server is running' });
+});
+
+// Endpoint: Get all projects
+app.get('/api/projects', (req, res) => {
+    res.json({ projects: Object.values(projectsDB) });
+});
 
 // Endpoint: Create a new HarmonyHub Project
 app.post('/api/projects', (req, res) => {
@@ -68,11 +79,33 @@ wss.on('connection', (ws, req) => {
 
     console.log(`[WS] New client connected to jam: ${projectId}`);
 
-    // This utility function handles the heavy lifting:
-    // 1. Creates a Y.Doc for the project if missing
-    // 2. Subscribes the client to updates
-    // 3. Syncs state automatically
-    setupWSConnection(ws, req, { docName: projectId });
+    // Create a Y.Doc for this project if it doesn't exist
+    if (!docMap.has(projectId)) {
+        docMap.set(projectId, new Y.Doc());
+    }
+
+    const ydoc = docMap.get(projectId);
+    const encoder = Y.encoding.createEncoder();
+    const state = Y.encoding.writeVar(encoder, 0);
+    Y.encoding.write(encoder, ydoc.getSubdocs());
+    
+    ws.send(Y.encoding.toUint8Array(encoder));
+
+    ws.on('message', (data) => {
+        const decoder = Y.decoding.createDecoder(new Uint8Array(data));
+        Y.applyUpdate(ydoc, data);
+        
+        // Broadcast to all connected clients for this project
+        wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(data);
+            }
+        });
+    });
+
+    ws.on('close', () => {
+        console.log(`[WS] Client disconnected from jam: ${projectId}`);
+    });
 });
 
 // Handle the HTTP -> WebSocket upgrade manually
