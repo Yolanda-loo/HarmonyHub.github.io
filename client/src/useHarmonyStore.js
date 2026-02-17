@@ -6,14 +6,20 @@ import * as Tone from 'tone';
 const WEBSOCKET_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/jam';
 const STEPS = 16;
 export const INSTRUMENTS = ['Kick', 'Snare', 'HiHat'];
-export const NOTES = ['C4', 'A3', 'G3', 'E3', 'C3']; // Pentatonic scale for the melody
+export const NOTES = ['C4', 'A3', 'G3', 'E3', 'C3'];
 
 export function useHarmonyStore(projectId = 'jam-session-pro') {
     const [grid, setGrid] = useState({});
     const [melody, setMelody] = useState({});
     const [awarenessUsers, setAwarenessUsers] = useState([]);
-    const [status, setStatus] = useState('disconnected');
     
+    // NEW: Mixer State
+    const [mixer, setMixer] = useState({
+        Kick_vol: 0, Snare_vol: 0, HiHat_vol: -10, Synth_vol: -5, Custom_vol: 0,
+        reverb: 0, delay: 0
+    });
+    
+    const [status, setStatus] = useState('disconnected');
     const ydocRef = useRef(null);
     const providerRef = useRef(null);
 
@@ -26,11 +32,10 @@ export function useHarmonyStore(projectId = 'jam-session-pro') {
 
         provider.on('status', event => setStatus(event.status));
 
-        // --- FEATURE 1 & 2: THE GRIDS ---
         const yGridMap = ydoc.getMap('sequencer-grid');
         const yMelodyMap = ydoc.getMap('melody-grid');
+        const yMixerMap = ydoc.getMap('mixer-settings'); // NEW Yjs Map
 
-        // Initialize Drums
         INSTRUMENTS.forEach(inst => {
             if (!yGridMap.has(inst)) {
                 const yArray = new Y.Array();
@@ -39,7 +44,6 @@ export function useHarmonyStore(projectId = 'jam-session-pro') {
             }
         });
 
-        // Initialize Melody (Piano Roll)
         NOTES.forEach(note => {
             if (!yMelodyMap.has(note)) {
                 const yArray = new Y.Array();
@@ -48,6 +52,13 @@ export function useHarmonyStore(projectId = 'jam-session-pro') {
             }
         });
 
+        // Initialize default mixer values if they don't exist
+        if (!yMixerMap.has('reverb')) {
+            ['Kick_vol', 'Snare_vol', 'HiHat_vol', 'Synth_vol', 'Custom_vol', 'reverb', 'delay'].forEach(key => {
+                yMixerMap.set(key, key.includes('vol') ? (key === 'HiHat_vol' ? -10 : 0) : 0);
+            });
+        }
+
         const syncReactState = () => {
             const newGrid = {};
             const newMelody = {};
@@ -55,16 +66,15 @@ export function useHarmonyStore(projectId = 'jam-session-pro') {
             NOTES.forEach(note => { if (yMelodyMap.get(note)) newMelody[note] = yMelodyMap.get(note).toArray(); });
             setGrid(newGrid);
             setMelody(newMelody);
+            setMixer(yMixerMap.toJSON()); // Sync mixer state
         };
 
         yGridMap.observeDeep(syncReactState);
         yMelodyMap.observeDeep(syncReactState);
+        yMixerMap.observe(syncReactState); // Listen to knob turns
         syncReactState();
 
-        // --- FEATURE 3: LIVE AWARENESS (CURSORS) ---
         const awareness = provider.awareness;
-        
-        // Give this user a random color and name
         awareness.setLocalStateField('user', {
             name: `Producer_${Math.floor(Math.random() * 1000)}`,
             color: '#' + Math.floor(Math.random()*16777215).toString(16),
@@ -72,18 +82,8 @@ export function useHarmonyStore(projectId = 'jam-session-pro') {
         });
 
         awareness.on('change', () => {
-            // Get all active users in the room
-            const users = Array.from(awareness.getStates().values())
-                .filter(state => state.user)
-                .map(state => state.user);
+            const users = Array.from(awareness.getStates().values()).filter(state => state.user).map(state => state.user);
             setAwarenessUsers(users);
-        });
-
-        // --- FEATURE 4: TELEMETRY (Data Pipeline Prep) ---
-        ydoc.on('update', (update) => {
-             // In a full implementation, we would send this update to our Node server, 
-             // which parses it and inserts it into our SQLite database for Power BI ingestion.
-             // console.log("Telemetry Event Logged: State Mutated");
         });
 
         return () => {
@@ -92,14 +92,10 @@ export function useHarmonyStore(projectId = 'jam-session-pro') {
         };
     }, [projectId]);
 
-    // Track mouse movements and broadcast to other users instantly
     const handleMouseMove = (e) => {
         if (providerRef.current && providerRef.current.awareness) {
             const state = providerRef.current.awareness.getLocalState();
-            providerRef.current.awareness.setLocalState({
-                ...state,
-                user: { ...state.user, cursor: { x: e.clientX, y: e.clientY } }
-            });
+            providerRef.current.awareness.setLocalState({ ...state, user: { ...state.user, cursor: { x: e.clientX, y: e.clientY } } });
         }
     };
 
@@ -107,7 +103,7 @@ export function useHarmonyStore(projectId = 'jam-session-pro') {
         const yArr = ydocRef.current.getMap('sequencer-grid').get(instrument);
         if (yArr) {
             yArr.delete(stepIndex, 1);
-            yArr.insert(stepIndex, [!yArr.get(stepIndex)]); // Toggles boolean
+            yArr.insert(stepIndex, [!yArr.get(stepIndex)]);
         }
     };
 
@@ -119,9 +115,14 @@ export function useHarmonyStore(projectId = 'jam-session-pro') {
         }
     };
 
+    // NEW: Function to broadcast knob turns
+    const changeMixer = (key, value) => {
+        ydocRef.current.getMap('mixer-settings').set(key, parseFloat(value));
+    };
+
     return { 
-        status, grid, melody, awarenessUsers, 
-        toggleDrum, toggleMelody, handleMouseMove, 
+        status, grid, melody, mixer, awarenessUsers, 
+        toggleDrum, toggleMelody, changeMixer, handleMouseMove, 
         startAudio: async () => await Tone.start() 
     };
 }
